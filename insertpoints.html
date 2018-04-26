@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <link rel="stylesheet" href="https://openlayers.org/en/v4.6.5/css/ol.css" type="text/css">
+    <style>
+
+      #menu {
+        float: right;
+        width: 200px;
+        background: yellow;
+        height: 200px;
+        position: relative;
+        top: -670px ;
+        right: 30px;
+      }
+    
+   
+      .map {
+        background: grey;
+        float: left;
+        height: 70%;
+        width: 50%;
+        }
+      .marker {
+        width: 21px;
+        height: 30px;
+        position: absolute;
+        background: url("mygif.gif") no-repeat scroll  transparent ;
+        }
+      .popover-content {
+        min-width: 180px;
+      }
+      .popover {
+        height: 200px;
+        width: 300px;
+            background: grey;
+      }
+
+      .nodename {
+          border-radius: 6px;
+          background: #73AD21;
+          height: 30%;
+          padding: 4px;
+          text-align: center; 
+          padding-bottom: 0px; 
+        }
+
+      .marker #tooltip {
+          visibility: hidden;
+          opacity: 0;
+          width: 120px;
+          height: 120px ;
+          background-color: grey;
+          color: #fff;
+          text-align: center;
+          border-radius: 6px;
+        
+           transition: 0.8s 0.3s ;  /* Xs Ys : X-fade transition Y- After Y seconds it will start fading
+          /* Position the tooltip */
+          position: absolute;
+          z-index: 1;
+          font-size: 60%;
+          padding: 5px;
+          text-align: left;
+          top: -350%;
+          left: 105%; 
+       }
+        .marker #foo {
+          visibility: hidden;
+          width: 240px;
+          height: 240px ;
+ 
+          top: -350%;
+          left: 105%; 
+       }
+      .marker:hover #tooltip {
+        visibility: visible;
+        opacity:  1; transition: 0s ; } 
+      .marker:hover #foo {
+        visibility: visible;
+        opacity:  1; transition: 0s ; } 
+      #map1 {
+        height: 500px;
+        width: 1150px;
+        margin: 0px;
+        float: right;
+        border: 1px solid black
+
+      }
+        #settings {
+        float: left
+        width: 20%;
+      }
+      </style>
+
+    <TITLE>TEMp</TITLE>
+
+
+    <script src="https://cdn.polyfill.io/v2/polyfill.min.js?features=requestAnimationFrame,Element.prototype.classList,URL"></script>
+    <script src="https://openlayers.org/en/v4.6.5/build/ol.js"></script>
+    <script src="https://code.jquery.com/jquery-2.2.3.min.js"></script>
+    <script src = "https://code.jquery.com/ui/1.10.4/jquery-ui.js">//for draggable ui</script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+
+  </head>
+  <body>
+
+    <button onclick="upload()">Upload</button><br><br>
+    <div id="mapList"></div>
+       
+    <!--This is map-->
+    <br><br><br><br>
+    <div >
+    <div id = "map1" ></div>
+    <div id= "settings">
+        <button onclick="addPoints()">Add points</button>
+        <button onclick="removeLastFeature()">Undo</button>
+        <input type="text" id="removeMe" style="margin-top: 10px">
+        <button onclick="removePoints()">Remove</button><br><br>
+        <button onclick="defZoom()">Default Zoom</button><br>
+        <button onclick="maxZoom()">Max Zoom</button><br>
+        <button onclick="minZoom()">Min Zoom</button><br>
+        <button onclick="show()">Show</button><br>
+        <button onclick="hide()">Hide</button><br>
+        <button onclick="save()">Save</button>
+    </div></div>
+     <!--This is Menu-->
+    <script type="text/javascript">
+      var thismap, thisview, thisnodes, thisprojection, overlays = {}, name
+      var socket = io();
+      socket.emit('index loaded', 'aa')
+
+      //GATEWAY TO THE MAP ([src, target, extent, center, zoom, maxzoom, minzoom, nodes])
+      function buildmap(src, extent, center, zoom, maxzoom, minzoom, nodes) {
+            nodes = nodes
+            //Create the and extent projection for the map
+            var projection = new ol.proj.Projection({
+              //code: 'ESPG:21781',
+              //units: 'm',
+              extent: extent });
+
+            //To create the map
+            var view  = new ol.View({
+                projection: projection,
+                center: ol.proj.fromLonLat(center, projection),
+                extent: extent,
+                zoom: zoom,
+                maxZoom: maxzoom,
+                minZoom: minzoom,
+                });
+            map = new ol.Map({
+              layers: [
+                new ol.layer.Image({
+                  source: new ol.source.ImageStatic({
+                    //attributions: '© <a href="http://xkcd.com/license.html">xkcd</a>',
+                    url: 'map.jpg',
+                    projection: projection,
+                    imageExtent: extent
+                  })
+                }), vectorLayer  ],
+              target: 'map1',
+              view: view});   //Its necessary for view to be animated in order to be animated in future
+
+            //To display LonLat of mouse 
+            var mousePosition = new ol.control.MousePosition({
+                coordinateFormat: ol.coordinate.createStringXY(2),
+                projection: 'EPSG:4326',
+                target: document.getElementById('myposition'),
+                undefinedHTML: '&nbsp;' });
+                map.addControl(mousePosition);
+            
+            var popups = []
+            // Adding overlays (markers). In future it should be using a loop that traverses the "nodes" object    
+            for (var node in nodes) {
+              var str = "<div id='"+node.toString()+"' class='marker' ><span id='tooltip'><div class='nodename'>Node: "+node.toString()+"</div> <br><p id='values/"+node.toString()+"''></span></div>"
+              $('#map1').append(str);             
+              var popup = new ol.Overlay({
+              element: document.getElementById(node.toString()),
+              offset: [-10.5,-30] });
+              popup.setPosition([nodes[node][0],nodes[node][1]]);
+              popups.push(popup);
+              overlays[node] = popup
+            }; 
+            for ( var pop in popups) 
+            {
+              map.addOverlay(popups[pop]);
+            }                
+            thismap = map;
+            thisview = view;
+            thisnodes = nodes;
+            thisprojection = projection
+          };
+
+      var zoom, maxzoom, minzoom,nodes, addedNodes = [];                                                 
+      //Initial map
+
+      function selectMap() {
+        var x = document.getElementById("select");
+        var i = x.selectedIndex;
+        socket.emit('send map', x.options[i].text)
+        name = x.options[i].text
+          //socket.emit('send map',x.options[i].text.toString);
+      };
+      socket.emit('send map', 'Level0')      
+      
+      socket.on('connect', function(msg) {
+        socket.on('map sent', function(map) {
+          document.getElementById('map1').innerHTML = null;
+          buildmap(map['source'], map['extension'], map['center'], map['zoom'], map['maxzoom'], map['minzooom'], map['nodes']);
+          zoom = map['zoom'];
+          maxzoom = map['maxzoom'];
+          minzoom = map['minzoom'];
+          nodes = map['nodes']
+        });
+        socket.on('list of maps', function(list) {
+        //"<form><select id='select' onchange='selectMap()'></select></form>"
+          var str1 = "<form><select id='select' onchange='selectMap()'>";
+          var str3 = "</select></form>"
+          var str2 = ""
+          for (var i in list) {
+            str2 = str2 + "<option>"+list[i].toString()+"</option>"
+          };
+          $('#mapList').append(str1 + str2 + str3)
+        });
+      });
+      
+      //Searching nodes
+    
+      vectorSource = new ol.source.Vector(),
+          vectorLayer = new ol.layer.Vector({
+            source: vectorSource
+          })
+      var iconStyle = new ol.style.Style({
+          image: new ol.style.Icon({
+            anchor: [0.5, 46],
+            anchorXUnits: 'fraction',
+            anchorYUnits: 'pixels',
+            opacity: 0.75,
+            src: 'mygif.gif'           //DONNOT USE ANIMATED IMAGE!!!!
+          }),
+          text: new ol.style.Text({
+              font: '12px Calibri,sans-serif',
+              fill: new ol.style.Fill({ color: '#000' }),
+              stroke: new ol.style.Stroke({
+                  color: '#fff', width: 2
+              }),
+              text: 'Add details'
+          })
+      });
+
+      var gSource; //gSource is to undo the added pointss
+
+      function removePoints() {
+        var key = $('#removeMe').val();
+        thismap.removeOverlay(overlays[key])
+        delete nodes[key]
+      }
+      function addPoints(nodes){     
+          thismap.on('click', function(evt) {
+            var feature = new ol.Feature(
+                new ol.geom.Point(evt.coordinate)
+            );
+            var nodeName = prompt('Node name',"")
+            if (nodeName != "" && nodeName !== null)  {
+                thisnodes[nodeName] = evt.coordinate;
+              feature.setStyle(iconStyle);
+              vectorSource.addFeature(feature);
+              addedNodes.push([nodeName,feature]) ;
+              gSource = vectorSource;
+            }
+                
+          }); 
+      };
+      function removeLastFeature(){ 
+          var popped = addedNodes.pop();
+          gSource.removeFeature(popped[1]);
+      }
+      function defZoom() {
+        zoom = thismap.getView().getZoom();
+      }
+      function maxZoom() {
+        maxzoom = thismap.getView().getZoom();
+      }
+      function minZoom() {
+        minzoom = thismap.getView().getZoom();
+      }
+      function save() {
+
+        alert('Confirm save(work under progress!)')
+        socket.emit('save this', {'zoom': zoom, 'maxzoom': maxzoom, 'minzoom':minzoom, 'nodes': thisnodes, 'name': name})
+        while (addedNodes[0]!==undefined) {
+          removeLastFeature();
+        };
+        socket.emit('send map', name)      
+
+      };
+
+   
+
+  
+  </script>
+  </body>
+</html>
+        
